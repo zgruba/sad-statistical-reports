@@ -1,0 +1,311 @@
+---
+title: "Raport statystyczny- projekt zaliczeniowy nr 2"
+author: "Zofia Gruba"
+date: '2022-06-04'
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Eksploracja danych
+
+Dane treningowe zawierają **3794** obserwacji. Jedna zmienna objaśniana i
+**9000** zmiennych objaśniających. W zbiorze testowym jest **670**
+obserwacji i **9000** zmienych. Każda zmienna jest typu *numeric* i dane są
+kompletne.
+
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+x.train <- read.csv(gzfile("X_train.csv.gz"))
+x.test <- read.csv(gzfile("X_test.csv.gz"))
+y.train <- read.csv(gzfile("y_train.csv.gz"))
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+x1 <- sapply(x.train, is.numeric)
+x2 <- sapply(x.test, is.numeric)
+x3 <- sapply(y.train, is.numeric)
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+any(isFALSE(x1))
+any(isFALSE(x2))
+any(isFALSE(x3))
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+x1 <- sapply(x.train, is.na)
+x2 <- sapply(x.test, is.na)
+x3 <- sapply(y.train, is.na)
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+any(isTRUE(x1))
+any(isTRUE(x2))
+any(isTRUE(x3))
+```
+
+Badając empiryczny rozkład zmiennej objaśnianej otrzymuję, że najmiejsza
+wartość jaką przyjmuje to **0**, największa zaś to **2.8647**. Podstawowe
+statystyki:
+
++   średnia: **1.1229** 
++   wariancja: **0.6006** 
++   mediana: **1.3865** 
++   dominanta: **0**
+
+Poniżej przedstawiam wykresy opisujące rozkład tej zmiennej:
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+summary(y.train)
+var(y.train$CD36)
+
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+getmode(y.train$CD36)
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+library(ggpubr)
+plot_hist <- gghistogram(y.train, x ="CD36")
+ggpar(plot_hist, main="Histogram zmiennej objaśnianej")
+plot_dens <- ggdensity(y.train, x ="CD36")
+ggpar(plot_dens, main="Wykres gęstości zmiennej objaśnianej")
+plot_dens <- ggecdf(y.train, x ="CD36")
+ggpar(plot_dens, main="Wykres dystrybuanty empirycznej zmiennej objaśnianej")
+```
+
+### Mapa ciepła korelacji 250 zmiennych najbardziej skorelowanych z zmienną objaśnianą
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+zmienne <- colnames(x.train)[cor(x.train, y.train)>=0.1948790]
+hma <- x.train[zmienne]
+corr <- cor(hma)
+heatmap(corr)
+```
+
+## ElasticNet
+
+Model ElasticNet to połączenie dwóch modeli: regresji grzbietowej i
+metody Lasso. Estymujemy współczynniki regresji dla ustalonych
+hiperparametrów $\lambda$ i $\alpha$.
+
+Wyrażenie, które minimalizujemy dla regresji grzbietowej:
+$$RSS + \lambda\||\hat{\beta}||_2^2$$
+
+Wyrażenie, które mimalizujemy dla metody Lasso:
+$$RSS + \lambda||\hat{\beta}||_1$$
+
+Tak jak w regresji grzbietowej i Lasso w ElasticNet również mamy
+parametr sterujący $\lambda$. Dla $\lambda = 0$ mamy po prostu metodę
+najmniejszych kwadratów, nastomiast gdy $\lambda \rightarrow \infty$
+współczynniki regresji maleją do zera. Połączenie tych dwóch metod w
+ElasticNet polega kombinacji wypukłej kar ściągających z parametrem
+$\alpha$.
+
+Wyrażenie, które mimalizujemy dla ElasticNet:
+$$ \frac{RSS}{2N} + \lambda(\frac{1-\alpha}{2}||\hat{\beta}||_2^2 + \alpha||\hat{\beta}||_1)$$
+zgodnie z *glmnet.stanford.edu*.
+
+Dla parametru $\alpha = 0$ mamy regresję grzbietową, a dla $\alpha = 1$
+lasso.
+
+Stosując 5-krotną walidację krzyżową dla następującej siatki:
+
+$$\alpha \in \{0, 0.02, 0.04, ..., 0.96, 0.98, 1 \}$$
+$$\lambda \in \{0.01, 0.12, 0.23, 0.34, 0.45, 0.56, 0.67, 0.78, 0.89, 1 \}$$
+otrzymałam najmniejszy błąd walidacji dla $\alpha = 0.02$ i $\lambda = 0.45$.
+
+Walidacja krzyżowa dzieli zbiór treningowy na **5** części po ok.**760**
+obserwacji. Przyjęłam **k=5** zgodnie z sugestią przedstawioną na wykładzie. Jest to
+kompromis między czasem trenowania a elastycznością modelu. Dla każdego kroku walidacji dostajemy w proporcji **4:1**
+zbiór treningowy na którym treningowym trenujemy model, walidacyjny na
+którym szacujemy błąd.
+
+Dla modelu z wybranymi parametrami wyliczam:
+
++ błąd treningowy: **0.2866**
++ błąd walidacyjny: **0.3366**
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+library(caret)
+control <- trainControl(method = "cv", number = 5, verboseIter = TRUE, savePredictions="all")
+set.seed(135)
+x.train$CD36y <-y.train$CD36
+mdl <- train(CD36y~., x.train, method='glmnet', tuneGrid =expand.grid(alpha = seq(0,1,by=0.02), lambda = seq(10^(-2),1,length=10)), trControl=control, standarize = TRUE)
+mdl
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+mdl$bestTune
+mdl$results[15,]
+mdl$resample
+D <- mdl$resample
+mean(D$RMSE) #walidacyjny
+W <-mdl$results
+min(W$RMSE)
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+f1 <- mdl$pred[mdl$pred$Resample == "Fold1",]$rowIndex
+y1 <- predict(mdl, x.train[-f1,])
+rmse1 <- RMSE(y1, y.train[-f1,])
+
+f2 <- mdl$pred[mdl$pred$Resample == "Fold2",]$rowIndex
+y2 <- predict(mdl, x.train[-f2,])
+rmse2 <- RMSE(y2, y.train[-f2,])
+
+f3 <- mdl$pred[mdl$pred$Resample == "Fold3",]$rowIndex
+y3 <- predict(mdl, x.train[-f3,])
+rmse3 <- RMSE(y3, y.train[-f3,])
+
+f4 <- mdl$pred[mdl$pred$Resample == "Fold4",]$rowIndex
+y4 <- predict(mdl, x.train[-f4,])
+rmse4 <- RMSE(y4, y.train[-f4,])
+
+f5 <- mdl$pred[mdl$pred$Resample == "Fold5",]$rowIndex
+y5 <- predict(mdl, x.train[-f5,])
+rmse5 <- RMSE(y5, y.train[-f5,])
+
+mean(c(rmse1,rmse2,rmse3,rmse4,rmse5))
+```
+
+## Lasy losowe
+
+Mój model lasów losowych trenuję na następującej siatce parametrów:
+
+$$mtry \in \{100, 300, 500 \}$$
+$$ntrees \in \{100,500,750 \}$$
+ $$max.depth \in \{0,25,50\}$$
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+library(caret)
+library(ranger)
+tunegrid <- expand.grid(.mtry=c(100, 300, 500), .splitrule = "variance" ,.min.node.size = 10)
+
+control <- trainControl(method = "cv", number = 5, verboseIter = TRUE, savePredictions="all")
+
+x.train$CD36y <-y.train$CD36
+hyperparameters <- data.frame("ntrees" = c(100,500,750,100,500,750,100,500,750), "max depth" = c(0,0,0,25,25,25,50,50,50))
+dict <- vector(mode = "list", nrow(hyperparameters))
+  for (i in 1:nrow(hyperparameters)){
+  set.seed(135)
+  dict[[i]] <- train(CD36y~., x.train, method='ranger', tuneGrid =tunegrid, trControl=control, standarize = TRUE, num.trees = hyperparameters[i,1], max.depth =hyperparameters[i,2], preProc = "scale")
+  }
+
+```
+
+Porównanie wyników dla siatki:
+
+| Model | mtry | ntree | max.depth |  RMSE  |
+|:-----:|:----:|:-----:|:---------:|:------:|
+|   1   | 500  |  100  |    inf    | 0.3244 |
+|   2   | 500  |  500  |    inf    | 0.3222 |
+|   3   | 500  |  750  |    inf    | 0.3217 |
+|   4   | 500  |  100  |    25     | 0.3238 |
+|   5   | 500  |  500  |    25     | 0.3217 |
+|   6   | 500  |  750  |    25     | 0.3212 |
+|   7   | 500  |  100  |    50     | 0.3244 |
+|   8   | 500  |  500  |    50     | 0.3221 |
+|   9   | 500  |  750  |    50     | 0.3217 |
+
+Najlepszy model dla: mtry = **500**, ntree = **750**, max depth = **25**. Ten model
+ma najniższe RMSE, a chcemy przez nie oszacować błąd testowy.
+
+Porównanie ElasticNet, lasów losowych i modelu przypisującego średnią:
+
+|    Model     | Fold1  | Fold2  | Fold3  | Fold4  | Fold5  |Average |
+|:------------:|:------:|:------:|:------:|:------:|:------:|:------:|
+|  ElasticNet  | 0.3303 | 0.3369 | 0.3328 | 0.3390 | 0.3438 | 0.3366 |
+| Lasy losowe  | 0.3136 | 0.3267 | 0.3168 | 0.3222 | 0.3268 | 0.3212 |
+| Referencyjny | 0.7692 | 0.7799 | 0.7759 | 0.7790 | 0.7704 | 0.7749 |
+
+Najlepszym modelem wydaje się być model lasów losowych. Daje on
+najniższy błąd na każdym z foldów oraz najniższy ostateczny błąd
+walidacyjny.
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+D1 <- dict[[1]]$resample
+D2 <- dict[[2]]$resample
+D3 <- dict[[3]]$resample
+D4 <- dict[[4]]$resample
+D5 <- dict[[5]]$resample
+D6 <- dict[[6]]$resample
+D7 <- dict[[7]]$resample
+D8 <- dict[[8]]$resample
+D9 <- dict[[9]]$resample
+
+D6
+
+mean(D1$RMSE)
+mean(D2$RMSE)
+mean(D3$RMSE)
+mean(D4$RMSE)
+mean(D5$RMSE)
+mean(D6$RMSE)
+mean(D7$RMSE)
+mean(D8$RMSE)
+mean(D9$RMSE)
+
+hyperparameters[6,]
+
+dict[[9]]$bestTune
+
+```
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+mean_y <- mean(y.train$CD36)
+vector_mean1 <- rep(mean_y, length(y1))
+vector_mean2 <- rep(mean_y, length(y2))
+vector_mean3 <- rep(mean_y, length(y3))
+vector_mean4 <- rep(mean_y, length(y4))
+vector_mean5 <- rep(mean_y, length(y5))
+
+refr1 <- RMSE(mean_y,y.train$CD36[f1])
+refr2 <- RMSE(mean_y,y.train$CD36[f2])
+refr3 <- RMSE(mean_y,y.train$CD36[f3])
+refr4 <- RMSE(mean_y,y.train$CD36[f4])
+refr5 <- RMSE(mean_y,y.train$CD36[f5])
+```
+
+## Predykcja na zbiorze testowym
+
+Jako model do predykcji wybrałam model QRF, czyli Quantile Regression Forests. Ten model dobrze sprawdza się w szczególności do danych wysokowymiarowych. Zgodnie z  (*Meinshausen, 2006*) przedziały predykcji obejmują nowe obserwacje z dużym prawdopodobieństwem. Metoda  wyłapuje obserwacje odstające. Przedziały predykcji dobrze odzwierciedlają zmienność danych, co czyni je bardzo dokładne, jeśli chodzi o przewidywanie.
+
+Model QRF jest oparty na modelu lasów losowych i warunkowej wartości oczekiwanej zmiennej objaśnianej, polega na estymowaniu kwantyli warunkowych.
+
+Model wybrałam na podstwie wyników na platformie *Kaggle*. Testowałam różne wariacje na temat lasów losowych z pakietów *caret*. Wcześniejsze predykcje pochodziły od modeli RRF (Regularized Random Forest) i RF (z pakietu *ranger*) z poprzedniego zadania. RMSE dla RRF utrzymywał się na poziomie ok. **0.176** (dla preprocesowania nie było znaczących zmian), natomiast dla RF ok. **0.185**. Dopiero QRF dał wynik poniżej **0.15**, który w rankingu wydał się być konkurencyjny.
+
+Ostateczna predykcja QRF w *Kaggle* dała RMSE równe **0.148**. Dla 5-krotnej walidacji krzyżowej i następujących wartości hiperparametrów:
+
++ mtry = **1200**
++ nodesize = **5**
++ ntrees = **500**
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE, eval=FALSE}
+library(caret)
+searchGrid <- expand.grid(.mtry=1200)
+
+control <- trainControl(method="cv", number=5, savePredictions="all", verboseIter=TRUE)
+x.train$CD36y <-y.train$CD36
+set.seed(135)
+modell <- train(CD36y~.,
+                data=x.train,
+                method="qrf",
+                tuneGrid=searchGrid,
+                trControl=control,
+                standardize=TRUE,
+                nodesize=5,
+                ntrees=500
+)
+
+expe<-predict(modell, x.test)
+write.csv(data.frame(Id=0:(length(expe)-1), Expected=expe), file= "predykcja.csv", row.names=FALSE)
+```

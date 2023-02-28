@@ -1,0 +1,407 @@
+---
+title: "Raport statystyczny - projekt nr 1"
+author: "Zofia Gruba"
+date: '2022-05-08'
+output: html_document
+---
+
+# Opis danych
+
+W zbiorze danych jest 500 obserwacji. Dla każdej obserwacji jest 6 zmiennych ilościowych (wiek, waga, wzrost, liczba dzieci, wydatki, oszczędności) i 3 zmienne jakościowe (płeć, stan cywilny, budynek). Braki danych występują jedynie dla zmiennej płeć - 239 kobiet, 223 mężczyzn oraz 38 braków danych.
+
+W analizie pominę dane, w których występują braki, aby nie zaburzały pozostałych danych. Dodatkowo niektóre testy w R pomijają brakujące dane, dlatego zdecydowałam się nie brać ich pod uwagę.
+
+Warto również zaznaczyć, że przedział wiekowy występujący w danych to 17-72 lat. Średnia wynosi 39 lat.
+
+Zależności w zmiennych objaśniających ilościowych można zaobserować dzięki mapie ciepła przedstawiającej korelację między tymi zmiennymi.
+
+```{r echo=FALSE, results=FALSE,warning=FALSE, message=FALSE}
+dane = read.delim("people.tab.csv")
+dane <- na.omit(dane)
+summary(dane)
+bez_brakow <- dane$plec[is.na(dane$plec) == FALSE]
+length(bez_brakow)
+kobiety <- bez_brakow[bez_brakow == 'K']
+length(kobiety)
+
+is_not_numeric <- function(x){ !is.numeric(x)
+}
+
+dane_num = dane[sapply(dane,is.numeric)]
+dane_nonum = dane[sapply(dane,is_not_numeric)]
+dane_num_objasniajace = dane_num[,1:5]
+
+library(ggcorrplot)
+ggcorrplot::ggcorrplot(cor(dane_num_objasniajace))
+
+```
+
+Zaobserwowane zależności między zmiennymi ilościowymi:
+
++ duża korelacja między wagą a wzrostem,
++ duża korelacja między liczbą dzieci a wydatkami,
++ dość znacząca korelacja między wydatkami a wiekiem,
++ prawie zerowa korelacja między liczbą dzieci a wiekiem.
+
+
+Można zaobserwować również zależności między zmiennymi jakościowymi:
+
++ mimo, że w danych jest mniej mężczyzn to stanowią oni większość osób w związku formalnym,
++ osoby będące w związku formalnym nie wybierają loftów jako miejsca zamieszkania
+
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+library(GGally)
+ggpairs(dane_nonum[c(1,2)],aes(col=plec), axisLabels = 'internal')
+ggpairs(dane_nonum[c(3,2)],aes(col=stan_cywilny), axisLabels = 'internal')
+```
+
+# Podsumowanie danych - wykresy
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+ggpairs(dane_num)
+ggplot(dane, aes(x=budynek,y=liczba_dzieci, fill=plec))+geom_boxplot()
+ggplot(dane, aes(x=stan_cywilny,y=waga, fill=plec))+geom_boxplot()
+ggplot(dane, aes(x=budynek,y=wiek, fill=plec))+geom_boxplot()
+
+data <- data.frame("category" = c(TRUE,FALSE),
+                   "amount" = c(160,302))
+
+ggplot(data, aes(x="", y=amount, fill=category)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0) +
+  geom_text(aes(label = paste0(round(amount*100/sum(amount),2), "%")), position = position_stack(vjust=0.5)) + labs(x = NULL, y = NULL, fill = NULL) +ggtitle("Stan cywilny")
+
+ggplot(dane, aes(x=wzrost, y=waga)) + geom_point() + geom_smooth(color="orange")
+ggplot(dane, aes(x=liczba_dzieci, y=wydatki))+ geom_point() + geom_smooth(color="red")
+```
+
+# Średnia i mediana zmiennej **wzrost**
+
+## Hipotezy dotyczące średniej
+
+Mam daną hipotezę zerową $H_0: \mu = 170 cm$, jako hipotezę alternatywną badam hipotezę $H_1: \mu <170 cm$.
+
+Badając tę hipotezę korzystam z testu t-Studenta.
+
+Założenia testu t-Studenta:
+
++ obserwacje w próbce niezależne,
++ dane powinny być w przybliżeniu normalnie dystrybuowane.
+
+Założenia dla zmiennej wzrost są spełnione.
+
+Niezależność obserwacji wynika z treści zadania - wzrost różnych osób. Założenia dotyczące normalności można sprawdzić analizując następujące wykresy:
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+library(ggpubr)
+p1 <- ggqqplot(dane, x ="wzrost")
+ggpar(p1, main="QQplot")
+p2 <- gghistogram(dane, x ="wzrost")
+p3 <- ggdensity(dane, x = "wzrost")
+ggpar(p2, main="Histogram zmiennej wzrost")
+ggpar(p3, main="Gęstość zmiennej wzrost")
+library(rstatix)
+dane %>% identify_outliers(wzrost)
+```
+
+### Wyniki
+
+Korzystając z testu t-Studenta dla wymienionych wcześniej hipotez, otrzymuję p-wartość 0.01949.
+
+
+## Hipotezy dotyczące mediany
+
+Mam daną hipotezę zerową $H_0: me = 165 cm$, jako hipotezę alternatywną badam hipotezę $H_1: me <165 cm$.
+
+Badając tę hipotezę korzystam z testu Wilcoxona.
+
+Założenia testu Wilcoxona:
+
++ rozkład jest symetryczny,
++ dane są niezależne.
+
+Założenia dla zmiennej wzrost są spełnione. Rozkład jest jest w przybliżeniu normalny, a więc symetryczny. Niezależność obserwacji wynika z treści zadania - wzrost różnych osób.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+wilcox.test(dane$wzrost, alternative = "less", mu = 165)
+```
+
+### Wyniki 
+Korzystając z testu t-Studenta dla wymienionych wcześniej hipotez, otrzymuję p-wartość 0.99.
+
+
+# Przedziały ufności dla zmiennej **wiek**
+
+## Średnia i odchylenie standardowe
+
+Aby wyznaczyć dwustronne przedziały ufności, będę potrzebowała założenia o rozkładzie normalnym zmiennej wiek. W tym celu przeanalizuję następujące wykresy: 
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+p1 <- ggqqplot(dane, x ="wiek")
+ggpar(p1, main="QQplot")
+p2 <- gghistogram(dane, x ="wiek")
+p3 <- ggdensity(dane, x = "wiek")
+ggpar(p2, main="Histogram zmiennej wiek")
+ggpar(p3, main="Gęstość zmiennej wiek")
+
+```
+
+Ponieważ qqplot jest bliski wykresowi liniowemu, krzywa gęstości bliska rozkładowi normalnemu, stwierdzam, że to założenie jest uprawnione.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+n <- 462
+s <- sqrt(var(dane$wiek))
+margin <- qt(0.995,df=n-1)*s/sqrt(n)
+lower <- mean(dane$wiek) - margin
+upper <- mean(dane$wiek) + margin
+cat("[", lower,",", upper, "]\n")
+
+# Odchylenie
+lower1 <- sqrt(n*var(dane$wiek)/qchisq(0.995, n-1))
+upper1 <- sqrt(n*var(dane$wiek)/qchisq(0.005, n-1))
+cat("[", lower1,",", upper1, "]\n")
+```
+
+### Wyniki
+Przedział ufności dla średniej: [ 38.42 , 40.57 ]
+
+Przedział ufności dla odchylenia standardowego: [ 8.23 , 9.75 ]
+
+## Kwantyle
+
+Do obliczenia przedziałów ufności dla kwantyli użyję z metody zaimplementowanej w module R "jmuOutlier" powstałej na podstawie testu dwumianowego.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+library(jmuOutlier)
+quantileCI(dane$wiek, probs = 0.25, conf.level = 0.99)
+quantileCI(dane$wiek, probs = 0.5, conf.level = 0.99)
+quantileCI(dane$wiek, probs = 0.75, conf.level = 0.99)
+```
+
+### Wyniki
+
+Przedziały ufności dla następujących kwantyli:
+
+$q_{0.25} = (32, 35)$  
+$q_{0.5} = (38, 40)$  
+$q_{0.75} = (43, 47)$
+
+
+# Hipotezy na poziomie istotności 0.01
+
+## Średnie wartości wagi pomiędzy osobami zamężnymi/żonatymi a pannami/kawalerami są równe
+
+$H_0:$ Średnie wartości wagi pomiędzy osobami zamężnymi/żonatymi a pannami/kawalerami są równe
+
+$H_1:$ Średnie wartości wagi pomiędzy osobami zamężnymi/żonatymi a pannami/kawalerami nie są równe
+
+Korzystam z testu t-Studenta z założeniami:
+
++ niezależność,
+
++ normalność rozkładów,
+
++ w przybliżeniu podobne wariancje między grupami.
+
+Z analizy wykresów typu qqplot mogę stwierdzić, że rozkłady są bliskie normalnemu. Różnica wariancji jest o rząd niższa niż wariancje. Niezależność jest, ponieważ badam dwie niezależne grupy.
+Założenia wydają się być uprawnione.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+
+obrączki = dane$waga[dane$stan_cywilny]
+bez_obrączek = dane$waga[!dane$stan_cywilny]
+obrączki
+data_o = data.frame(obrączki)
+data_ob = data.frame(bez_obrączek)
+p1 <- ggqqplot(data_o, x ="obrączki")
+ggpar(p1, main="QQplot - żonaci/zamężne")
+p2 <- ggqqplot(data_ob, x ="bez_obrączek")
+ggpar(p1, main="QQplot - kawalerowie/panny")
+
+var(obrączki)
+var(bez_obrączek)
+
+t.test(obrączki, bez_obrączek, conf.level = 0.99, alternative = "two.sided")
+```
+
+### Wyniki
+
+P-wartość dla tego testu wynosi 0.9109, co oznacza, że na poziomie istotności 0.01 nie można odrzucić hipotezy $H_0$.
+
+## Zmienna **liczba dzieci** i zmienna **wiek** są niezależne
+
+$H_0:$ Liczba dzieci i wiek są niezależne  
+$H_1:$ Liczba dzieci i wiek są zależne  
+W celu zbadania niezależności skorzystamy z testu $\chi^2$ Pearsona.
+
+Głównym założeniem testu $\chi^2$ Pearsona jest fakt, że zmienna (X,Y) jest zmienną skokową. Dla (liczba_dzieci, wiek) można się o tym przekonać patrząc na wykres:
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+cov(dane$liczba_dzieci, dane$wiek)
+ggplot(dane, aes(x=liczba_dzieci, y=wiek)) + geom_point()
+set.seed(3)
+chisq.test(dane$liczba_dzieci, dane$wiek, simulate.p.value = TRUE)
+```
+
+### Wyniki
+
+P-wartość dla tego testu wynosi średnio około 0.2, co oznacza, że na poziomie istotności 0.01 nie można odrzucić hipotezy $H_0$.
+
+## Zmienna **płeć** i zmienna **stan cywilny** są niezależne
+
+$H_0:$ Płeć i stan cywilny są niezależne  
+$H_1:$ Płeć i stan cywilny są zależne
+
+W celu zbadania niezależności skorzystamy z testu $\chi^2$ Pearsona. Głównym założeniem testu $\chi^2$ Pearsona jest fakt, że zmienna (X,Y) jest zmienną skokową. Jest tak, bo obydwie zmienne są jakościowe.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+set.seed(3)
+chisq.test(dane$plec, dane$stan_cywilny, simulate.p.value = TRUE)
+```
+
+### Wyniki
+
+P-wartość dla tego testu średnio wynosi powyżej 0.01 (około 0.11), co oznacza, że na poziomie istotności 0.01 nie można odrzucić hipotezy $H_0$.
+
+## Zmienna **wzrost** ma rozkład normalny z średnią 168 i odchyleniem standardowym 20
+
+$H_0:$ Zmienna wzrost ma rozkład normalny z średnią 168 i odchyleniem standardowym 20  
+$H_1:$ Zmienna wzrost nie ma rozkładu normalnego z średnią 168 i odchyleniem standardowym 20
+
+Korzystam z testu Kołmogorowa-Smirnowa, test nie ma konkretnych założeń. Wykorzystuję test dla dwóch próbek i porównuje zmienną wzrost z losową próbką pobraną z $N(168,20)$.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+hist(dane$wzrost, main = "Histogram zmiennej wzrost")
+summary(dane$wzrost)
+set.seed(3)
+próbka <- rnorm(50000,mean=168, sd = 20)
+hist(próbka, main = "Histogram próbki rozkładu normalnego")
+ks.test(dane$wzrost, próbka, alternative = "two.sided")
+```
+
+### Wyniki 
+P-wartość dla tego testu średnio wynosi powyżej 0.7, co oznacza, że na poziomie istotności 0.01 nie można odrzucić hipotezy $H_0$.
+
+# Model regresji liniowej
+
+Po przeanalizowaniu zależności zmiennej oszczędności od pozostałych zmiennych niezależnych, podjęłam decyzję, że nie będę modyfikować ich w celu poprawy modelu.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+dane %>% identify_outliers(oszczednosci)
+model <- lm(oszczednosci ~ stan_cywilny +wiek + waga + liczba_dzieci + wzrost + plec + budynek + wydatki , dane)
+summary(model)
+cat("bez stanu cywilnego\n")
+nowy_model <- lm(oszczednosci ~ wiek + waga + liczba_dzieci + wzrost + wydatki + plec+ budynek, dane)
+summary(nowy_model)
+cat("bez wieku\n")
+model <- lm(oszczednosci ~ stan_cywilny + waga + liczba_dzieci + wzrost + wydatki + plec+ budynek , dane)
+summary(model)
+cat("bez wagi\n")
+model <- lm(oszczednosci ~ stan_cywilny + wiek + liczba_dzieci + wzrost + wydatki + plec + budynek, dane)
+summary(model)
+cat("bez liczby dzieci\n")
+model <- lm(oszczednosci ~ stan_cywilny + wiek + waga + wzrost + wydatki + plec + budynek, dane)
+summary(model)
+cat("bez wzrostu\n")
+model <- lm(oszczednosci ~ stan_cywilny + wiek + waga + liczba_dzieci + wzrost + wydatki + plec+ budynek, dane)
+summary(model)
+cat("bez wydatków")
+model <- lm(oszczednosci ~ stan_cywilny + wiek + waga + liczba_dzieci + wzrost + plec + budynek, dane)
+summary(model)
+cat("bez płci")
+nowy_lepszy_model <- lm(oszczednosci ~ stan_cywilny + wiek + waga + liczba_dzieci + wzrost + wydatki+ budynek, dane)
+summary(nowy_lepszy_model)
+cat("bez budynku")
+model <- lm(oszczednosci ~ stan_cywilny + wiek + waga + liczba_dzieci + wzrost + wydatki + plec, dane)
+summary(model)
+```
+Dla modelu niewykluczającego żadnej zmiennej otrzymałam następujące wartości parametrów:  
+$R^2 = 0.9673$  
+$RSS = 102$  
+$P-VAL < 2.2e-16$
+
+Zmiennymi, których usunięcie nieznacznie poprawia podstawowy model, są zmienna stan_cywilny i plec. Jednak patrząc na poszczególne p-wartości, podjęłam decyzję, żeby wykluczyć zmienną plec, ponieważ dla niej p-wartość w modelu podstawowym była większa.
+
+Ostatecznie parametry wybranego przeze mnie modelu wynoszą:
+$R^2 = 0.9674$  
+$RSS = 101.9$  
+$P-VAL < 2.2e-16$
+
+Założenia modelu regresji liniowej:
+
+1. Wartości zmiennych objaśniających są deterministyczne
+2. Model jest postaci $Y = β_0 + β_1X_1 + . . . + β_pX_p + ε$
+3. $ε$ wektor losowy niezależnych zmiennych losowych o identycznym
+rozkładzie
+4. Błedy o średniej 0, homoskedastyczne i nieskorelowane.
+
+## Analiza wykresów diagnostycznych
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+plot(nowy_lepszy_model, which=1)
+```
+
+Powyższy wykres przedstawia zależność Y od predykcji Y. Na podstawie wykresu można uznać, że zależność w danych jest w przybliżeniu liniowa.
+Widać, że błędy nie są autoskorelowane.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+plot(nowy_lepszy_model, which=2)
+```
+
+Rozkład residuów jest bardzo zbliżony do normalnego standardowego. Co pozwala sądzić, że mają średnią 0 i są homoskedastyczne.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+plot(nowy_lepszy_model, which=3)
+```
+
+Ten wykres również pozwala się przekonać o homoskedastyczności błędów. Nie widać, żeby wariancja miała zależeć od wartości zmiennej objaśnianej.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+plot(nowy_lepszy_model, which=5)
+```
+
+Z tego wykresu można odcztać obserwacje odstające, które zaburzają model. Za takie można uznać obserwacje o wysokiej dźwigni i nietypowych wartościach residuów.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+library(MASS)
+Studentized_Residuals <- studres(nowy_lepszy_model)
+Próba <- row.names(dane)
+data <- data.frame(Próba)
+data$Studentized_Residuals <- Studentized_Residuals
+plot(data, main= "Reszty studentyzowane")
+```
+
+Z ostatniego wykresu odcztujemy reszty studentyzowane. Przyjmuje się, że dla obserwacji odstających reszty studentyzowane odchylają się od 0 o więcej niż 3. Na wykresie widać, że w danych są tego typu obserwacje, są to obserwacje 4, 121, 230, 296 i 440.
+
+## Jak wyglądałby model po odrzuceniu obserwacji z resztami studentyzowanymi odchylonymi o więcej niż 3 od 0?
+
+Analizując te same parametry modelu dla danych z usuniętymi obserwacjami 4, 121, 230, 296 i 440 otrzymuję następujące wyniki:
+
+$R^2 = 0.9731$  
+$RSS = 92.58$  
+$P-VAL < 2.2e-16$
+
+Szczególnie duża zmiana następuje dla $RSS$, natomiast $R^2$ również się poprawia.
+
+### Wykresy diagnostyczne dla zmienionych danych
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+dane$index <- c(1:462)
+dane$std <- Studentized_Residuals
+nowe_dane <- dane[-c(3,116,210,270,408),]
+head(nowe_dane)
+pop_model <- lm(oszczednosci ~ stan_cywilny + wiek + waga + liczba_dzieci + wzrost + wydatki+ budynek, nowe_dane)
+summary(pop_model)
+
+plot(pop_model)
+
+Studentized_Residuals <- studres(pop_model)
+Próba2 <- row.names(nowe_dane)
+data2 <- data.frame(Próba2)
+data2$Studentized_Residuals <- Studentized_Residuals
+plot(data2, main= "Reszty studentyzowane")
+```
+
+Podsumowując, po wyrzuceniu najbardziej odstających obserwacji zależności przedstawione na wykresach są bardzo podobne do tych przed wyrzuceniem pięciu odstających obserwacji. Po odrzuceniu model ma znacznie mniejszy $RSS$, poprawia się $R^2$, a p-value pozostaje na tym samym poziomie.
